@@ -102,36 +102,75 @@ fn exclude_lines(input: String, args: &[&str]) -> String {
 
 fn slice_lines(input: String, args: &[&str]) -> String {
     // Take a range of lines (1-indexed, inclusive: "slice 1:5" takes lines 1-5, "slice 2", or "slice 5:")
+    // Negative indices count from the end: "slice -1" is last line, "slice -5:-1" is last 5 lines
     let lines: Vec<&str> = input.lines().collect();
+    let len = lines.len();
     
     if let Some(first_arg) = args.get(0) {
         let result = if first_arg.contains(':') {
             // Parse range notation "start:end" or "start:"
             let parts: Vec<&str> = first_arg.split(':').collect();
-            let start = parts.get(0)
-                .and_then(|s| s.parse::<usize>().ok())
-                .unwrap_or(1)
-                .saturating_sub(1); // Convert to 0-indexed
-            let end = parts.get(1)
-                .and_then(|s| if s.is_empty() { None } else { s.parse::<usize>().ok() })
-                .unwrap_or(lines.len()); // Default to end of lines (already inclusive)
+            
+            // Parse start index (can be negative)
+            let start = if let Some(s) = parts.get(0).filter(|s| !s.is_empty()) {
+                if let Ok(n) = s.parse::<isize>() {
+                    if n < 0 {
+                        // Negative index: count from end
+                        len.saturating_sub(n.unsigned_abs())
+                    } else {
+                        // Positive index: convert from 1-indexed to 0-indexed
+                        (n as usize).saturating_sub(1)
+                    }
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+            
+            // Parse end index (can be negative)
+            let end = if let Some(s) = parts.get(1).filter(|s| !s.is_empty()) {
+                if let Ok(n) = s.parse::<isize>() {
+                    if n < 0 {
+                        // Negative index: count from end
+                        len.saturating_sub(n.unsigned_abs())
+                    } else {
+                        // Positive index: keep as-is for inclusive range
+                        n as usize
+                    }
+                } else {
+                    len
+                }
+            } else {
+                len
+            };
             
             lines
                 .into_iter()
                 .skip(start)
-                .take(end.saturating_sub(start)) // end is 1-indexed, so end - start gives inclusive count
+                .take(end.saturating_sub(start))
                 .collect::<Vec<_>>()
                 .join("\n")
         } else {
-            // Single number - take just that line (1-indexed)
-            let line_num = first_arg.parse::<usize>().ok().unwrap_or(1);
-            let start = line_num.saturating_sub(1); // Convert to 0-indexed
-            lines
-                .into_iter()
-                .skip(start)
-                .take(1)
-                .collect::<Vec<_>>()
-                .join("\n")
+            // Single number - take just that line (1-indexed or negative)
+            if let Ok(n) = first_arg.parse::<isize>() {
+                let start = if n < 0 {
+                    // Negative index: count from end
+                    len.saturating_sub(n.unsigned_abs())
+                } else {
+                    // Positive index: convert from 1-indexed to 0-indexed
+                    (n as usize).saturating_sub(1)
+                };
+                
+                lines
+                    .into_iter()
+                    .skip(start)
+                    .take(1)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            } else {
+                String::new()
+            }
         };
         
         if !result.is_empty() {
@@ -146,58 +185,93 @@ fn slice_lines(input: String, args: &[&str]) -> String {
 
 fn choose_columns(input: String, args: &[&str]) -> String {
     // Select specific columns (1-indexed, inclusive: "choose 1 3" to get columns 1 and 3, "choose 2:5" for columns 2-5, or "choose 2:" for column 2 onwards)
-    let mut column_indices: Vec<usize> = Vec::new();
-    let mut range_start: Option<usize> = None;
-    let mut range_end: Option<usize> = None;
+    // Negative indices count from the end: "choose -1" is last column, "choose -3:-1" is last 3 columns
     
-    for arg in args {
-        if arg.contains(':') {
-            // Parse range notation "start:end" or "start:"
-            let parts: Vec<&str> = arg.split(':').collect();
-            range_start = parts.get(0)
-                .and_then(|s| s.parse::<usize>().ok())
-                .map(|n| n.saturating_sub(1)); // Convert to 0-indexed
-            range_end = parts.get(1)
-                .and_then(|s| if s.is_empty() { None } else { s.parse::<usize>().ok() });
-            break; // Once we hit a range, use that instead of individual columns
-        } else if let Ok(idx) = arg.parse::<usize>() {
-            column_indices.push(idx.saturating_sub(1)); // Convert to 0-indexed
-        }
-    }
-    
-    if range_start.is_some() || !column_indices.is_empty() {
-        let result = input
-            .lines()
-            .map(|line| {
-                let columns: Vec<&str> = line.split_whitespace().collect();
-                
-                if let Some(start) = range_start {
-                    // Take range of columns (inclusive)
-                    let end = range_end.unwrap_or(columns.len()); // 1-indexed end, keep as-is for inclusive range
-                    columns
-                        .into_iter()
-                        .skip(start)
-                        .take(end.saturating_sub(start)) // end is 1-indexed, so end - start gives inclusive count
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                } else {
-                    // Take specific columns
-                    column_indices
-                        .iter()
-                        .filter_map(|&i| columns.get(i).copied())
-                        .collect::<Vec<_>>()
-                        .join(" ")
+    let result = input
+        .lines()
+        .map(|line| {
+            let columns: Vec<&str> = line.split_whitespace().collect();
+            let col_len = columns.len();
+            
+            // Check if we have a range
+            let has_range = args.iter().any(|arg| arg.contains(':'));
+            
+            if has_range {
+                // Parse range notation
+                for arg in args {
+                    if arg.contains(':') {
+                        let parts: Vec<&str> = arg.split(':').collect();
+                        
+                        // Parse start index (can be negative)
+                        let start = if let Some(s) = parts.get(0).filter(|s| !s.is_empty()) {
+                            if let Ok(n) = s.parse::<isize>() {
+                                if n < 0 {
+                                    col_len.saturating_sub(n.unsigned_abs())
+                                } else {
+                                    (n as usize).saturating_sub(1)
+                                }
+                            } else {
+                                0
+                            }
+                        } else {
+                            0
+                        };
+                        
+                        // Parse end index (can be negative)
+                        let end = if let Some(s) = parts.get(1).filter(|s| !s.is_empty()) {
+                            if let Ok(n) = s.parse::<isize>() {
+                                if n < 0 {
+                                    col_len.saturating_sub(n.unsigned_abs())
+                                } else {
+                                    n as usize
+                                }
+                            } else {
+                                col_len
+                            }
+                        } else {
+                            col_len
+                        };
+                        
+                        return columns
+                            .into_iter()
+                            .skip(start)
+                            .take(end.saturating_sub(start))
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                    }
                 }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        if !result.is_empty() {
-            format!("{}\n", result)
-        } else {
-            result
-        }
+                String::new()
+            } else {
+                // Parse individual column indices (can be negative)
+                let column_indices: Vec<usize> = args
+                    .iter()
+                    .filter_map(|arg| {
+                        if let Ok(n) = arg.parse::<isize>() {
+                            if n < 0 {
+                                Some(col_len.saturating_sub(n.unsigned_abs()))
+                            } else {
+                                Some((n as usize).saturating_sub(1))
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                
+                column_indices
+                    .iter()
+                    .filter_map(|&i| columns.get(i).copied())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    
+    if !result.is_empty() {
+        format!("{}\n", result)
     } else {
-        input
+        result
     }
 }
 
@@ -406,6 +480,27 @@ mod tests {
     }
 
     #[test]
+    fn test_slice_negative_index() {
+        let input = "line 1\nline 2\nline 3\nline 4\nline 5\n".to_string();
+        let result = slice_lines(input, &["-1"]);
+        assert_eq!(result, "line 5\n");
+    }
+
+    #[test]
+    fn test_slice_negative_range() {
+        let input = "line 1\nline 2\nline 3\nline 4\nline 5\n".to_string();
+        let result = slice_lines(input, &["-3:-1"]);
+        assert_eq!(result, "line 3\nline 4\nline 5\n");
+    }
+
+    #[test]
+    fn test_slice_negative_start() {
+        let input = "line 1\nline 2\nline 3\nline 4\nline 5\n".to_string();
+        let result = slice_lines(input, &["-2:"]);
+        assert_eq!(result, "line 4\nline 5\n");
+    }
+
+    #[test]
     fn test_choose_single_column() {
         let input = "col1 col2 col3\nrow1a row1b row1c\nrow2a row2b row2c\n".to_string();
         let result = choose_columns(input, &["2"]);
@@ -438,6 +533,34 @@ mod tests {
         let input = "col1  col2   col3\nrow1a    row1b row1c\n".to_string();
         let result = choose_columns(input, &["2"]);
         assert_eq!(result, "col2\nrow1b\n");
+    }
+
+    #[test]
+    fn test_choose_negative_index() {
+        let input = "col1 col2 col3 col4 col5\nrow1a row1b row1c row1d row1e\n".to_string();
+        let result = choose_columns(input, &["-1"]);
+        assert_eq!(result, "col5\nrow1e\n");
+    }
+
+    #[test]
+    fn test_choose_negative_range() {
+        let input = "col1 col2 col3 col4 col5\nrow1a row1b row1c row1d row1e\n".to_string();
+        let result = choose_columns(input, &["-3:-1"]);
+        assert_eq!(result, "col3 col4 col5\nrow1c row1d row1e\n");
+    }
+
+    #[test]
+    fn test_choose_negative_multiple() {
+        let input = "col1 col2 col3 col4 col5\nrow1a row1b row1c row1d row1e\n".to_string();
+        let result = choose_columns(input, &["-2", "-4"]);
+        assert_eq!(result, "col4 col2\nrow1d row1b\n");
+    }
+
+    #[test]
+    fn test_choose_mixed_positive_negative() {
+        let input = "col1 col2 col3 col4 col5\nrow1a row1b row1c row1d row1e\n".to_string();
+        let result = choose_columns(input, &["1", "-1"]);
+        assert_eq!(result, "col1 col5\nrow1a row1e\n");
     }
 
     #[test]

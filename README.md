@@ -85,12 +85,15 @@ filter cat output.txt -- exclude "test & skip"
 
 ### `slice <range>`
 
-Select specific lines by index (1-indexed, inclusive).
+Select specific lines by index (1-indexed, inclusive). Negative indices count from the end.
 
 **Syntax:**
 - `slice N` - Get line N only
 - `slice N:M` - Get lines N through M (inclusive)
 - `slice N:` - Get lines from N to the end
+- `slice -N` - Get the Nth line from the end (-1 is last line)
+- `slice -N:-M` - Get lines from Nth to Mth from the end (inclusive)
+- `slice -N:` - Get last N lines to the end
 
 **Examples:**
 
@@ -106,17 +109,28 @@ filter cat file.txt -- slice 4:
 
 # Get just the 10th line
 filter cat file.txt -- slice 10
+
+# Get the last line
+filter cat file.txt -- slice -1
+
+# Get the last 5 lines
+filter cat file.txt -- slice -5:-1
+
+# Get everything except the first line
+filter ls -la -- slice 2:
 ```
 
 ### `choose <columns>`
 
-Select specific columns from whitespace-separated output (1-indexed, inclusive).
+Select specific columns from whitespace-separated output (1-indexed, inclusive). Negative indices count from the end.
 
 **Syntax:**
 - `choose N` - Get column N only
 - `choose N M P` - Get columns N, M, and P
 - `choose N:M` - Get columns N through M (inclusive)
 - `choose N:` - Get columns from N to the end
+- `choose -N` - Get the Nth column from the end (-1 is last column)
+- `choose -N:-M` - Get columns from Nth to Mth from the end (inclusive)
 
 **Examples:**
 
@@ -135,6 +149,15 @@ filter ls -la -- choose 4:
 
 # Show only the permissions and filename
 filter ls -la -- choose 1 9
+
+# Get the last column (command name from ps)
+filter ps aux -- choose -1
+
+# Get the last 3 columns
+filter ls -la -- choose -3:-1
+
+# Get first and last column
+filter ps aux -- choose 1 -1
 ```
 
 ### `unique`
