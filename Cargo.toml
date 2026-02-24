@@ -3,5 +3,33 @@ name = "filter"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "filter"
+path = "src/bin/filter.rs"
+
+[[bin]]
+name = "exclude"
+path = "src/bin/exclude.rs"
+
+[[bin]]
+name = "slice"
+path = "src/bin/slice.rs"
+
+[[bin]]
+name = "choose"
+path = "src/bin/choose.rs"
+
+[[bin]]
+name = "unique"
+path = "src/bin/unique.rs"
+
+[[bin]]
+name = "main"
+path = "src/main.rs"
+
 [dependencies]
 itertools = "0.14.0"
+
+[lib]
+name = "filter_lib"
+path = "src/lib.rs"

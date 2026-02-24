@@ -16,17 +16,44 @@ with the `-i` flag, so all your aliases and shell functions work seamlessly.
 cargo build --release
 ```
 
-The binary will be available at `target/release/filter`.
+This builds the following binaries in `target/release/`:
+
+| Binary | Description |
+|--------|-------------|
+| `main` | Combined tool using `--` and `.` syntax |
+| `filter` | Standalone filter (keep matching lines) |
+| `exclude` | Standalone exclude (remove matching lines) |
+| `slice` | Standalone slice (select lines by index) |
+| `choose` | Standalone choose (select columns) |
+| `unique` | Standalone unique (deduplicate lines) |
+
+The standalone binaries read from stdin and accept the same arguments as their corresponding operations in the combined tool, making them composable with standard Unix pipes.
 
 ## Usage
 
+### Combined tool
+
 ```bash
-filter <command> -- <operation1> . <operation2> . <operation3>
+main <command> -- <operation1> . <operation2> . <operation3>
 ```
 
 - Everything before `--` is the command to execute
 - Everything after `--` is a series of operations separated by `.`
 - Operations are applied left-to-right
+
+### Standalone binaries
+
+Each operation is also available as a standalone binary that reads from stdin:
+
+```bash
+ps aux | filter python | choose 2 11 | slice 1:5
+```
+
+This is equivalent to:
+
+```bash
+main ps aux -- filter python . choose 2 11 . slice 1:5
+```
 
 ## Commands
 
@@ -295,9 +322,14 @@ Traditional Unix tools like `grep`, `awk`, `sed`, and `cut` are powerful but can
 ps aux | grep python | awk '{print $2, $11}' | head -5
 ```
 
-**With Filter:**
+**With standalone binaries:**
 ```bash
-filter ps aux -- filter python . choose 2 11 . slice 1:5
+ps aux | filter python | choose 2 11 | slice 1:5
+```
+
+**With combined tool:**
+```bash
+main ps aux -- filter python . choose 2 11 . slice 1:5
 ```
 
 ## License
